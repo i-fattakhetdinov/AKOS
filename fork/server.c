@@ -4,13 +4,14 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 
+#define NUMSERVERS 10
+#define BUF_SIZE 1024
 int main()
 {
-    int sock, listener, clientId = 0;
+    int sock, listener;
     struct sockaddr_in address;
-    char msg[1024];
-    FILE *out;
-    
+    pid_t id = getpid();
+
     listener = socket(AF_INET, SOCK_STREAM, 0);
     if (listener < 0) {
 	perror("Socket Error");
@@ -22,45 +23,37 @@ int main()
 
     if (bind(listener, (struct sockaddr *)&address, sizeof(address)) < 0) {
 	perror("Bind Error");
-        exit(2);
+        exit(1);
     }
     listen(listener, 1);
-
-    while(1) {	
-	sock = accept(listener, 0, 0);
-	if (sock < 0) {
-	    perror("Accept Error");
-            exit(3);
+    int i;
+    for (i = 0; i < NUMSERVERS && id; i++) {
+        id = fork();
+        if (id == -1) { // Ошибка
+            perror("Fork Error");
         }
-
-	switch(fork()) {
-	case -1: //Ошибка
-	    perror("Fork Error");
-	    break;
-
-        case 0: //Процесс потомок
-	    ;
-            char filename[128];
-            sprintf(filename, "client %d", clientId);
-            out = fopen(filename, "w");
-            close(listener);
-            while(1) {
-                if(recv(sock, msg, 1024, 0)) {
-		    fprintf(out, "%s", &msg);
-                } else break;
-            }
-            close(out);
-            close(sock);
-            exit(0);
-
-	default:
-            clientId++;
-	    close(sock);
-	} 
-
     }
 
-    close(listener);
+    printf("Server with pid %d started\n", getpid());
+
+    while(1) {	
+	sock = accept(listener, NULL, NULL); // NULL, NULL - адрес клиента не интересует, он принимает все
+	if (sock < 0) {
+	    perror("Accept Error");
+            exit(1);
+        }
+        FILE *out = fopen("log.txt", "a");
+	char s[BUF_SIZE];
+        while(1) {
+            if(recv(sock, s, BUF_SIZE, 0)) {
+                fprintf(out, "%d : %s",getpid(), &s);
+            } else break;
+        }
+        fprintf(out,"\n");
+        fclose(out);
+        close(sock);
+    } 
+
 
     return 0;
 }
